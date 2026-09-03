@@ -1,0 +1,41 @@
+{
+    "FixedFileInfo": {
+        "FileVersion": {
+            "Major": 1,
+            "Minor": 9,
+            "Patch": 3
+        },
+        "ProductVersion": {
+            "Major": 1,
+            "Minor": 9,
+            "Patch": 3
+        },
+        "FileFlagsMask": "3f",
+        "FileFlags ": "00",
+        "FileOS": "040004",
+        "FileType": "01",
+        "FileSubType": "00"
+    },
+    "StringFileInfo": {
+        "Comments": "",
+        "CompanyName": "",
+        "FileDescription": "简单易用的v2ray客户端和代理池服务",
+        "FileVersion": "1.9.3",
+        "InternalName": "",
+        "LegalCopyright": "",
+        "LegalTrademarks": "",
+        "OriginalFilename": "",
+        "PrivateBuild": "",
+        "ProductName": "V2rayPool",
+        "ProductVersion": "1.9.3",
+        "SpecialBuild": ""
+    },
+    "VarFileInfo": {
+        "Translation": {
+            "LangID": "0409",
+            "CharsetID": "04B0"
+        }
+    },
+    "IconPath": "resource/v2raypool.logo.ico",
+    "ManifestPath": ""
+}

@@ -1,0 +1,15 @@
+.env
+default.env
+go.sum
+v2raypool
+*.exe
+*.log
+*.txt
+*.json
+!versioninfo.json
+!sample_outbounds.json
+# routing.rules.json
+# v2ray.config.json
+# resource/
+resource.syso
+runtime/

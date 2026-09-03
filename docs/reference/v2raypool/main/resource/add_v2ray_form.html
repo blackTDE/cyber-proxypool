@@ -1,0 +1,29 @@
+<div class="vp-tabs-mini">
+  <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)">
+    <button class="tab-btn-mini active" data-tab="add-file-tab" style="padding:8px 16px;cursor:pointer;border:none;background:none;font-size:13px;font-family:var(--font);color:var(--primary);font-weight:600;border-bottom:2px solid var(--primary);margin-bottom:-2px">指定文件</button>
+    <button class="tab-btn-mini" data-tab="add-node-tab" style="padding:8px 16px;cursor:pointer;border:none;background:none;font-size:13px;font-family:var(--font);color:var(--text-secondary)">指定节点</button>
+  </div>
+
+  <!-- Tab: 指定文件 -->
+  <div id="add-file-tab" class="mini-tab-panel">
+    <div class="form">
+      <div class="form-row">
+        <label class="form-label-inline" style="width:80px">配置文件</label>
+        <input type="text" id="addConfigFile" name="config_file" placeholder="启动新v2ray服务的配置文件。例: v2ray.config1.json" value="" class="form-control">
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: 指定节点 (开发中) -->
+  <div id="add-node-tab" class="mini-tab-panel" style="display:none">
+    <div style="text-align:center;padding:40px 20px;color:var(--text-muted)">
+      <div style="font-size:48px;margin-bottom:12px;opacity:0.3">🔧</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px;color:var(--text-secondary)">功能开发中</div>
+      <div style="font-size:13px">请先使用「指定文件」方式添加 v2ray 服务</div>
+      <div style="margin-top:16px;font-size:12px;background:#f8f8f8;padding:8px 12px;border-radius:4px;text-align:left;line-height:1.8">
+        直接在配置文件中填写 vmess/ss/trojan 出站节点信息，<br>
+        然后通过「指定文件」启动即可。
+      </div>
+    </div>
+  </div>
+</div>

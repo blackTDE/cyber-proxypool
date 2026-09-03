@@ -1,0 +1,47 @@
+<div class="form" style="margin:8px 0">
+
+  <div class="form-row">
+    <label class="form-label-inline" style="width:100px">原配置文件</label>
+    <input type="text" id="copyOldConfig" disabled value="" class="form-control">
+  </div>
+
+  <div class="form-row">
+    <label class="form-label-inline" style="width:100px">新配置文件</label>
+    <input type="text" id="copyNewConfig" name="config_file" placeholder="例: v2ray.config.json" value="" class="form-control">
+  </div>
+
+  <div class="form-row">
+    <label class="form-label-inline" style="width:100px">全局代理</label>
+    <div class="toggle-wrap">
+      <span class="toggle" id="copyGlobalToggle"></span>
+      <span class="toggle-label" id="copyGlobalLabel">关闭</span>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label class="form-label-inline" style="width:100px">新入站协议</label>
+    <select id="copyProtocol" name="inbound_protocol" class="form-control" style="width:160px">
+      <option value="http" <{% if eq "http" .GetHttpProxyProtocol %}>selected<{%end%}>>http</option>
+      <option value="socks" <{% if ne "http" .GetHttpProxyProtocol %}>selected<{%end%}>>socks(socks5)</option>
+    </select>
+  </div>
+
+  <div class="form-row">
+    <label class="form-label-inline" style="width:100px">新入站端口</label>
+    <input type="text" id="copyPort" name="local_port" placeholder="填写新的本地端口号，不可与原有的冲突" value="" class="form-control" style="width:200px">
+  </div>
+
+</div>
+
+<script>
+(function(){
+  var toggle = document.getElementById('copyGlobalToggle');
+  var label = document.getElementById('copyGlobalLabel');
+  if (toggle && label) {
+    toggle.addEventListener('click', function() {
+      this.classList.toggle('active');
+      label.textContent = this.classList.contains('active') ? '开启' : '关闭';
+    });
+  }
+})();
+</script>
