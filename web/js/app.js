@@ -16,6 +16,7 @@ const state = {
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
   initSSE();
   fetchInitialData();
   setupEventListeners();
@@ -673,4 +674,48 @@ function escapeHTML(str) {
   return str.replace(/[&<>'"]/g, 
     tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
   );
+}
+
+// --- Cyber Daylight & Dark Theme Controller ---
+function initTheme() {
+  const toggleBtn = document.getElementById('btnThemeToggle');
+  const modeText = document.getElementById('themeModeText');
+  const metaThemeColor = document.getElementById('metaThemeColor');
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('cyber_theme', theme);
+
+    if (theme === 'light') {
+      if (modeText) modeText.textContent = 'CYBER DARK';
+      if (metaThemeColor) metaThemeColor.setAttribute('content', '#f1f5f9');
+      if (toggleBtn) toggleBtn.setAttribute('title', 'Switch to Cyber Dark theme');
+    } else {
+      if (modeText) modeText.textContent = 'DAYLIGHT';
+      if (metaThemeColor) metaThemeColor.setAttribute('content', '#06090f');
+      if (toggleBtn) toggleBtn.setAttribute('title', 'Switch to Daylight theme');
+    }
+  }
+
+  // Initial sync from attribute or system
+  const initialTheme = document.documentElement.getAttribute('data-theme') || 
+    localStorage.getItem('cyber_theme') || 
+    (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(initialTheme);
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextTheme = activeTheme === 'light' ? 'dark' : 'light';
+      applyTheme(nextTheme);
+      showToast(`Switched to ${nextTheme === 'light' ? 'Daylight (Solar Matrix)' : 'Cyber Dark'} Theme`, 'cyan');
+    });
+  }
+
+  // Auto-switch if system scheme changes and user hasn't explicitly set preference
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
+    if (!localStorage.getItem('cyber_theme')) {
+      applyTheme(e.matches ? 'light' : 'dark');
+    }
+  });
 }

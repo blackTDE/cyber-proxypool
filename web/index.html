@@ -4,7 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CYBER // PROXYPOOL</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#06090f" id="metaThemeColor">
   <link rel="stylesheet" href="/css/cyber.css">
+  <script>
+    // Fast theme hydration to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('cyber_theme') || 
+        (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
 </head>
 <body>
 
@@ -12,11 +23,35 @@
   <header class="cyber-header">
     <div class="header-inner">
       <a href="#" class="brand">
-        <div class="brand-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-            <polyline points="2 17 12 22 22 17"></polyline>
-            <polyline points="2 12 12 17 22 12"></polyline>
+        <div class="brand-icon" title="Cyber // ProxyPool Core">
+          <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+            <defs>
+              <linearGradient id="brandCyberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="var(--neon-cyan)"/>
+                <stop offset="100%" stop-color="var(--neon-emerald)"/>
+              </linearGradient>
+            </defs>
+            <!-- Outer Hexagon -->
+            <polygon points="24,3 41,12 41,34 24,44 7,34 7,12" stroke="url(#brandCyberGrad)" stroke-width="2.6" stroke-linejoin="round" fill="none"/>
+            <!-- Inner Tech Grid -->
+            <polygon points="24,8 36,15 36,31 24,38 12,31 12,15" stroke="url(#brandCyberGrad)" stroke-width="1.2" stroke-dasharray="2 3" opacity="0.6"/>
+            <!-- Routing Nodes -->
+            <circle cx="24" cy="3" r="2.2" fill="var(--neon-cyan)"/>
+            <circle cx="41" cy="12" r="2.2" fill="var(--neon-cyan)"/>
+            <circle cx="41" cy="34" r="2.2" fill="var(--neon-emerald)"/>
+            <circle cx="24" cy="44" r="2.2" fill="var(--neon-emerald)"/>
+            <circle cx="7" cy="34" r="2.2" fill="var(--neon-emerald)"/>
+            <circle cx="7" cy="12" r="2.2" fill="var(--neon-cyan)"/>
+            <!-- Data Paths -->
+            <path d="M24,8 L24,19" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12,15 L20,22" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M36,15 L28,22" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M12,31 L20,26" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M36,31 L28,26" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <path d="M24,38 L24,29" stroke="url(#brandCyberGrad)" stroke-width="2" stroke-linecap="round"/>
+            <!-- Nexus Core -->
+            <circle cx="24" cy="24" r="5.5" stroke="var(--neon-emerald)" stroke-width="2" fill="rgba(0, 255, 157, 0.15)"/>
+            <circle cx="24" cy="24" r="2.4" fill="var(--neon-cyan)"/>
           </svg>
         </div>
         <div class="brand-text">
@@ -26,6 +61,29 @@
       </a>
 
       <div class="header-actions">
+        <!-- Daylight / Dark Cyber Theme Toggle -->
+        <button id="btnThemeToggle" class="cyber-btn cyber-theme-toggle" title="Switch between Daylight and Cyber Dark theme" aria-label="Toggle Theme">
+          <span class="theme-icon theme-icon-sun" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </span>
+          <span class="theme-icon theme-icon-moon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </span>
+          <span class="theme-mode-text" id="themeModeText">DAYLIGHT</span>
+        </button>
+
         <button id="btnOpenSubModal" class="cyber-btn cyber-btn-cyan">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="12" y1="5" x2="12" y2="19"></line>
