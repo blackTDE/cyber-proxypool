@@ -36,8 +36,8 @@ type Tester struct {
 }
 
 func NewTester(defaultURL string, timeoutSec int) *Tester {
-	if defaultURL == "" {
-		defaultURL = "https://api.ipify.org?format=json"
+	if defaultURL == "" || defaultURL == "https://api.ipify.org?format=json" {
+		defaultURL = "https://cloudflare.com/cdn-cgi/trace"
 	}
 	if timeoutSec <= 0 {
 		timeoutSec = 8
@@ -164,6 +164,20 @@ func (t *Tester) TestAll(ctx context.Context, nodes []*model.Node, targetURL str
 }
 
 func extractIPFromBody(b []byte) string {
+	content := string(b)
+
+	// 1. Cloudflare cdn-cgi/trace format: line starting with "ip="
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ip=") {
+			ip := strings.TrimPrefix(line, "ip=")
+			if ipRegex.MatchString(ip) {
+				return ip
+			}
+		}
+	}
+
+	// 2. JSON format (ipify, httpbin)
 	var m map[string]any
 	if err := json.Unmarshal(b, &m); err == nil {
 		if ip, ok := m["ip"].(string); ok && ip != "" {
@@ -174,7 +188,7 @@ func extractIPFromBody(b []byte) string {
 		}
 	}
 
-	// Regex search for IPv4
-	found := ipRegex.FindString(string(b))
+	// 3. Fallback regex search for IPv4
+	found := ipRegex.FindString(content)
 	return found
 }

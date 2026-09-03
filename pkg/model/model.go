@@ -101,7 +101,7 @@ func DefaultAppConfig() AppConfig {
 			Port:     10808,
 			Strategy: StrategyRoundRobin,
 		},
-		TestURL:        "https://api.ipify.org?format=json",
+		TestURL:        "https://cloudflare.com/cdn-cgi/trace",
 		TestTimeoutSec: 8,
 	}
 }

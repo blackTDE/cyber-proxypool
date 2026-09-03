@@ -12,12 +12,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cyberproxypool/pkg/model"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/sagernet/sing-vmess"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 	"golang.org/x/net/proxy"
 )
@@ -302,7 +306,19 @@ func (d *VLESSDialer) DialContext(ctx context.Context, network, target string) (
 	// [1 byte atyp]
 	// [target address bytes]
 	// Let's decode port and atyp from targetBytes:
-	atyp := targetBytes[0]
+	// SOCKS5 atyp -> VLESS atyp mapping:
+	// SOCKS5: 0x01 = IPv4, 0x03 = Domain, 0x04 = IPv6
+	// VLESS:  0x01 = IPv4, 0x02 = Domain, 0x03 = IPv6
+	vlessAtyp := byte(0x01)
+	switch targetBytes[0] {
+	case 0x01:
+		vlessAtyp = 0x01
+	case 0x03:
+		vlessAtyp = 0x02 // Domain Name
+	case 0x04:
+		vlessAtyp = 0x03 // IPv6
+	}
+
 	portBytes := targetBytes[len(targetBytes)-2:]
 	addrBytes := targetBytes[1 : len(targetBytes)-2]
 
@@ -312,7 +328,7 @@ func (d *VLESSDialer) DialContext(ctx context.Context, network, target string) (
 	req = append(req, 0x00) // addons len
 	req = append(req, 0x01) // command: TCP
 	req = append(req, portBytes...)
-	req = append(req, atyp)
+	req = append(req, vlessAtyp)
 	req = append(req, addrBytes...)
 
 	if _, err := rawConn.Write(req); err != nil {
@@ -320,22 +336,57 @@ func (d *VLESSDialer) DialContext(ctx context.Context, network, target string) (
 		return nil, fmt.Errorf("vless header write failed: %w", err)
 	}
 
-	// Read VLESS response header: [1 byte version][1 byte addons len][addons...]
-	respHeader := make([]byte, 2)
-	if _, err := io.ReadFull(rawConn, respHeader); err != nil {
-		rawConn.Close()
-		return nil, fmt.Errorf("vless response read failed: %w", err)
+	return NewSmartVlessConn(rawConn), nil
+}
+
+// SmartVlessConn lazily detects and strips the VLESS response header on the first read
+type SmartVlessConn struct {
+	net.Conn
+	reader      *bufio.Reader
+	initialized bool
+	mu          sync.Mutex
+}
+
+func NewSmartVlessConn(c net.Conn) *SmartVlessConn {
+	return &SmartVlessConn{
+		Conn:   c,
+		reader: bufio.NewReader(c),
 	}
-	addonsLen := int(respHeader[1])
-	if addonsLen > 0 {
-		addonsBuf := make([]byte, addonsLen)
-		if _, err := io.ReadFull(rawConn, addonsBuf); err != nil {
-			rawConn.Close()
-			return nil, fmt.Errorf("vless addons read failed: %w", err)
+}
+
+func (c *SmartVlessConn) Read(b []byte) (int, error) {
+	c.mu.Lock()
+	if !c.initialized {
+		c.initialized = true
+		c.mu.Unlock()
+
+		firstByte, err := c.reader.ReadByte()
+		if err != nil {
+			return 0, err
 		}
+
+		if firstByte == 0x00 {
+			// Version 0 VLESS response header: [addonsLen][addons...]
+			addonsLenByte, err := c.reader.ReadByte()
+			if err != nil {
+				return 0, err
+			}
+			addonsLen := int(addonsLenByte)
+			if addonsLen > 0 {
+				discard := make([]byte, addonsLen)
+				if _, err := io.ReadFull(c.reader, discard); err != nil {
+					return 0, err
+				}
+			}
+		} else {
+			// No VLESS response header (direct stream like HTTP/TLS), unread byte
+			_ = c.reader.UnreadByte()
+		}
+	} else {
+		c.mu.Unlock()
 	}
 
-	return rawConn, nil
+	return c.reader.Read(b)
 }
 
 // ==========================================
@@ -343,24 +394,17 @@ func (d *VLESSDialer) DialContext(ctx context.Context, network, target string) (
 // ==========================================
 type VMessDialer struct {
 	node      *model.Node
-	parsedID  [16]byte
 	netDialer net.Dialer
 }
 
 func NewVMessDialer(n *model.Node) (*VMessDialer, error) {
-	parsed, err := uuid.Parse(n.Password)
-	if err != nil {
-		return nil, fmt.Errorf("invalid vmess uuid: %w", err)
-	}
 	return &VMessDialer{
 		node:      n,
-		parsedID:  parsed,
 		netDialer: net.Dialer{Timeout: 10 * time.Second},
 	}, nil
 }
 
 func (d *VMessDialer) DialContext(ctx context.Context, network, target string) (net.Conn, error) {
-	// For VMess nodes with WebSocket + TLS (standard for modern subscriptions)
 	serverAddr := net.JoinHostPort(d.node.Server, fmt.Sprintf("%d", d.node.Port))
 
 	sni := d.node.SNI
@@ -372,38 +416,67 @@ func (d *VMessDialer) DialContext(ctx context.Context, network, target string) (
 		InsecureSkipVerify: d.node.SkipCertVerify,
 	}
 
-	scheme := "ws"
-	if d.node.TLS {
-		scheme = "wss"
+	var rawConn net.Conn
+	var err error
+
+	if strings.ToLower(d.node.Network) == "ws" {
+		scheme := "ws"
+		if d.node.TLS {
+			scheme = "wss"
+		}
+		wsURL := url.URL{
+			Scheme: scheme,
+			Host:   serverAddr,
+			Path:   d.node.Path,
+		}
+		if wsURL.Path == "" {
+			wsURL.Path = "/"
+		}
+
+		dialer := websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+		}
+		if d.node.TLS {
+			dialer.TLSClientConfig = tlsCfg
+		}
+
+		headers := http.Header{}
+		if d.node.Host != "" {
+			headers.Set("Host", d.node.Host)
+		}
+
+		ws, _, wsErr := dialer.DialContext(ctx, wsURL.String(), headers)
+		if wsErr != nil {
+			return nil, fmt.Errorf("vmess ws dial failed: %w", wsErr)
+		}
+		rawConn = NewWSConn(ws)
+	} else if d.node.TLS {
+		rawConn, err = tls.DialWithDialer(&d.netDialer, "tcp", serverAddr, tlsCfg)
+		if err != nil {
+			return nil, fmt.Errorf("vmess tls dial failed: %w", err)
+		}
+	} else {
+		rawConn, err = d.netDialer.DialContext(ctx, "tcp", serverAddr)
+		if err != nil {
+			return nil, fmt.Errorf("vmess tcp dial failed: %w", err)
+		}
 	}
 
-	wsURL := url.URL{
-		Scheme: scheme,
-		Host:   serverAddr,
-		Path:   d.node.Path,
-	}
-	if wsURL.Path == "" {
-		wsURL.Path = "/"
+	client, err := vmess.NewClient(d.node.Password, d.node.Cipher, d.node.AlterID)
+	if err != nil {
+		rawConn.Close()
+		return nil, fmt.Errorf("vmess client init failed: %w", err)
 	}
 
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
+	host, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		rawConn.Close()
+		return nil, err
 	}
-	if d.node.TLS {
-		dialer.TLSClientConfig = tlsCfg
-	}
+	p, _ := strconv.Atoi(portStr)
+	dest := M.ParseSocksaddrHostPort(host, uint16(p))
 
-	headers := http.Header{}
-	if d.node.Host != "" {
-		headers.Set("Host", d.node.Host)
-	}
-
-	ws, _, wsErr := dialer.DialContext(ctx, wsURL.String(), headers)
-	if wsErr != nil {
-		return nil, fmt.Errorf("vmess ws dial failed: %w", wsErr)
-	}
-
-	return NewWSConn(ws), nil
+	return client.DialConn(rawConn, dest)
 }
 
 // ==========================================
