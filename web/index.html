@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CYBER // PROXYPOOL</title>
+  <link rel="stylesheet" href="/css/cyber.css">
+</head>
+<body>
+
+  <!-- Top Cyber Header -->
+  <header class="cyber-header">
+    <div class="header-inner">
+      <a href="#" class="brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>Cyber // ProxyPool</h1>
+          <span>AUTONOMOUS PROXY POOL &amp; TUNNEL</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <button id="btnOpenSubModal" class="cyber-btn cyber-btn-cyan">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          Subscriptions
+        </button>
+
+        <button id="btnTestAll" class="cyber-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          Test All Latencies &amp; IPs
+        </button>
+
+        <button id="btnListenAll" class="cyber-btn cyber-btn-emerald">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Listen All
+        </button>
+
+        <button id="btnStopAll" class="cyber-btn cyber-btn-danger">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12"></rect>
+          </svg>
+          Stop All
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Cyber Dashboard -->
+  <main class="cyber-container">
+
+    <!-- Metrics Bar -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Total Extracted Nodes</div>
+        <div class="metric-val" id="metricTotalNodes">0</div>
+      </div>
+      <div class="metric-card emerald">
+        <div class="metric-label">Active Proxy Listeners</div>
+        <div class="metric-val" id="metricRunningNodes">0 <small>/ 0 active</small></div>
+      </div>
+      <div class="metric-card purple">
+        <div class="metric-label">Subscriptions</div>
+        <div class="metric-val" id="metricSubs">0</div>
+      </div>
+      <div class="metric-card pink">
+        <div class="metric-label">Memory Footprint</div>
+        <div class="metric-val" id="metricMem">0 <small>MB</small></div>
+      </div>
+    </div>
+
+    <!-- Unified Rotating Tunnel Pool Banner -->
+    <div class="tunnel-banner">
+      <div class="tunnel-info">
+        <div class="tunnel-radar active" id="tunnelRadar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10"></path>
+            <path d="M12 6a6 6 0 0 1 6 6"></path>
+          </svg>
+        </div>
+        <div class="tunnel-title">
+          <h2>Unified Rotating Tunnel Pool <span class="badge badge-online">DUAL SOCKS5/HTTP</span></h2>
+          <p>Single proxy port that automatically load-balances and rotates exit IPs across requests</p>
+        </div>
+      </div>
+
+      <div class="tunnel-controls">
+        <div class="tunnel-endpoints">
+          <span class="copy-pill" id="tunnelEndpointHttp" onclick="copyToClipboard('127.0.0.1:10808', 'HTTP Tunnel')">
+            HTTP: 127.0.0.1:10808
+          </span>
+          <span class="copy-pill" id="tunnelEndpointSocks" onclick="copyToClipboard('127.0.0.1:10808', 'SOCKS5 Tunnel')">
+            SOCKS5: 127.0.0.1:10808
+          </span>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <select id="tunnelStrategySelect" class="cyber-select">
+            <option value="round-robin">Round-Robin</option>
+            <option value="random">Random</option>
+            <option value="least-latency">Lowest Latency</option>
+          </select>
+
+          <input type="number" id="tunnelPortInput" class="cyber-input" style="width: 85px; min-width:unset;" value="10808" min="1024" max="65535">
+
+          <label class="cyber-switch" title="Toggle Tunnel Pool">
+            <input type="checkbox" id="tunnelToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar & Filter Panel -->
+    <div class="toolbar-panel">
+      <div class="toolbar-left">
+        <input type="text" id="searchInput" class="cyber-input" placeholder="Search node, country, server, IP...">
+
+        <select id="filterSubSelect" class="cyber-select">
+          <option value="all">All Subscriptions</option>
+        </select>
+
+        <div style="display:flex; gap:0.25rem;">
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn active" data-proto="all">ALL</button>
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn" data-proto="trojan">Trojan</button>
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn" data-proto="ss">SS</button>
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn" data-proto="vmess">VMess</button>
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn" data-proto="vless">VLESS</button>
+          <button class="cyber-btn cyber-btn-sm filter-proto-btn" data-proto="socks5">Socks5</button>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; cursor:pointer; color:var(--text-muted);">
+          <input type="checkbox" id="filterRunningOnly">
+          Running only
+        </label>
+
+        <select id="sortSelect" class="cyber-select">
+          <option value="default">Sort: Default</option>
+          <option value="latency">Sort: Lowest Latency</option>
+          <option value="name">Sort: Name</option>
+          <option value="port">Sort: Inbound Port</option>
+        </select>
+
+        <span id="filteredNodeCount" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">
+          Showing 0 nodes
+        </span>
+      </div>
+    </div>
+
+    <!-- Node Table Matrix -->
+    <div class="node-table-wrapper">
+      <table class="node-table">
+        <thead>
+          <tr>
+            <th style="width: 45px; text-align:center;">Listen</th>
+            <th>Node / Region</th>
+            <th>Protocol</th>
+            <th>Remote Server</th>
+            <th>Local Inbound</th>
+            <th>Latency</th>
+            <th>Exit IP Address</th>
+          </tr>
+        </thead>
+        <tbody id="nodeTableBody">
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+              Loading nodes...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <!-- Subscriptions Modal -->
+  <div class="modal-backdrop" id="subModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Manage Subscriptions &amp; Nodes</h3>
+        <button class="cyber-btn cyber-btn-sm" onclick="closeModal('subModal')">✕</button>
+      </div>
+
+      <!-- Existing Subscriptions List -->
+      <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 0.5rem; display:block;">Active Sources</label>
+      <div class="sub-list" id="subModalList">
+        <!-- populated via js -->
+      </div>
+
+      <!-- Add New Subscription Form -->
+      <div class="modal-tabs" style="margin-top: 1.25rem;">
+        <button class="tab-btn active" data-tab="url">Paste URL</button>
+        <button class="tab-btn" data-tab="raw">Paste YAML / Node Links</button>
+      </div>
+
+      <form id="subForm">
+        <div class="form-group">
+          <label>Subscription Label (Optional)</label>
+          <input type="text" id="subNameInput" class="cyber-input" style="width: 100%;" placeholder="e.g. My Fast Nodes">
+        </div>
+
+        <div id="tabContentUrl" class="form-group">
+          <label>Subscription URL (Clash YAML or Base64)</label>
+          <input type="url" id="subUrlInput" class="cyber-input" style="width: 100%;" placeholder="https://example.com/api/v1/client/subscribe?token=...">
+        </div>
+
+        <div id="tabContentRaw" class="form-group" style="display: none;">
+          <label>Raw Clash YAML / Base64 / URI Links</label>
+          <textarea id="subContentInput" class="form-textarea" placeholder="Paste Clash proxies: yaml or vmess://, vless://, trojan://, ss:// links here..."></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1rem;">
+          <button type="button" class="cyber-btn" onclick="closeModal('subModal')">Cancel</button>
+          <button type="submit" class="cyber-btn cyber-btn-cyan">Import &amp; Extract Nodes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
