@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"cyberproxypool/pkg/api"
-	"cyberproxypool/pkg/model"
 	"cyberproxypool/pkg/proxy"
 	"cyberproxypool/pkg/storage"
 	"cyberproxypool/pkg/tester"
