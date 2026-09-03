@@ -12,9 +12,10 @@ import (
 
 // WSConn wraps a gorilla websocket.Conn as a net.Conn
 type WSConn struct {
-	ws     *websocket.Conn
-	reader io.Reader
-	mu     sync.Mutex
+	ws      *websocket.Conn
+	reader  io.Reader
+	readMu  sync.Mutex
+	writeMu sync.Mutex
 }
 
 func NewWSConn(ws *websocket.Conn) *WSConn {
@@ -22,8 +23,8 @@ func NewWSConn(ws *websocket.Conn) *WSConn {
 }
 
 func (c *WSConn) Read(b []byte) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.readMu.Lock()
+	defer c.readMu.Unlock()
 
 	for {
 		if c.reader != nil {
@@ -55,6 +56,8 @@ func (c *WSConn) Read(b []byte) (int, error) {
 }
 
 func (c *WSConn) Write(b []byte) (int, error) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	err := c.ws.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return 0, err
