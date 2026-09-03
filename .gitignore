@@ -1,0 +1,25 @@
+# Binaries
+bin/
+cyberproxypool
+*.exe
+*.test
+*.out
+
+# Data
+data/
+*.log
+
+# Node & Frontend
+web/dist/
+web/node_modules/
+node_modules/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Reference media
+docs/reference/**/screenshot*
+docs/reference/**/.git
