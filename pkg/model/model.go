@@ -155,3 +155,9 @@ func (s *NodeStats) DecrConn() {
 	}
 	s.mu.Unlock()
 }
+
+func (s *NodeStats) Get() (int64, int64, int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.UploadBytes, s.DownloadBytes, s.ActiveConns
+}

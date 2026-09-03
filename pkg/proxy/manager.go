@@ -181,10 +181,7 @@ func (m *Manager) GetStats(nodeID string) (int64, int64, int64) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if s, ok := m.nodeStats[nodeID]; ok {
-		s.mu.Lock()
-		up, down, conns := s.UploadBytes, s.DownloadBytes, s.ActiveConns
-		s.mu.Unlock()
-		return up, down, conns
+		return s.Get()
 	}
 	return 0, 0, 0
 }
