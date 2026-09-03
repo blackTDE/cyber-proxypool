@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -267,54 +266,70 @@ func (l *InboundListener) handleHTTP(clientConn net.Conn, reader *bufio.Reader, 
 			return
 		}
 
-		pipeBidirectional(clientConn, remoteConn, stats)
+		// Wrap clientConn with any remaining buffered data in reader
+		wrappedClient := clientConn
+		if reader.Buffered() > 0 {
+			wrappedClient = &bufferedConn{
+				Conn:   clientConn,
+				reader: io.MultiReader(reader, clientConn),
+			}
+		}
+
+		pipeBidirectional(wrappedClient, remoteConn, stats)
 	} else {
-		// Plain HTTP Proxying (GET/POST with absolute URL)
-		target := req.URL.Host
-		if target == "" {
-			target = req.Host
-		}
-		if !strings.Contains(target, ":") {
-			target = net.JoinHostPort(target, "80")
+		// Plain HTTP Proxying (GET/POST) via RoundTrip
+		transport := &http.Transport{
+			DialContext: outbound.DialContext,
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
+		// Ensure full URL is present
+		if req.URL.Scheme == "" {
+			req.URL.Scheme = "http"
+		}
+		if req.URL.Host == "" {
+			req.URL.Host = req.Host
+		}
 
-		remoteConn, err := outbound.DialContext(ctx, "tcp", target)
+		req.Header.Del("Proxy-Connection")
+		req.Header.Del("Proxy-Authorization")
+		req.RequestURI = ""
+
+		resp, err := transport.RoundTrip(req)
 		if err != nil {
 			clientConn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n"))
 			return
 		}
-		defer remoteConn.Close()
+		defer resp.Body.Close()
 
-		// Strip proxy-specific headers and write request to remote
-		req.Header.Del("Proxy-Connection")
-		req.Header.Del("Proxy-Authorization")
-		req.RequestURI = "" // RequestURI must be empty for Client.Do / Write
-
-		// Convert absolute URL to relative for standard origin server
-		if req.URL.IsAbs() {
-			relURL, _ := url.Parse(req.URL.RequestURI())
-			req.URL = relURL
-		}
-
-		if err := req.Write(remoteConn); err != nil {
-			return
-		}
-
-		pipeBidirectional(clientConn, remoteConn, stats)
+		// Write response back to client
+		resp.Write(clientConn)
 	}
+}
+
+type bufferedConn struct {
+	net.Conn
+	reader io.Reader
+}
+
+func (b *bufferedConn) Read(p []byte) (int, error) {
+	return b.reader.Read(p)
 }
 
 // pipeBidirectional relays data between client and remote connection while recording stats
 func pipeBidirectional(clientConn, remoteConn net.Conn, stats *model.NodeStats) {
+	var once sync.Once
+	closeBoth := func() {
+		clientConn.Close()
+		remoteConn.Close()
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 
 	// Client -> Remote (Upload)
 	go func() {
 		defer wg.Done()
+		defer once.Do(closeBoth)
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := clientConn.Read(buf)
@@ -330,14 +345,12 @@ func pipeBidirectional(clientConn, remoteConn net.Conn, stats *model.NodeStats) 
 				break
 			}
 		}
-		if tc, ok := remoteConn.(*net.TCPConn); ok {
-			tc.CloseWrite()
-		}
 	}()
 
 	// Remote -> Client (Download)
 	go func() {
 		defer wg.Done()
+		defer once.Do(closeBoth)
 		buf := make([]byte, 32*1024)
 		for {
 			n, err := remoteConn.Read(buf)
@@ -352,9 +365,6 @@ func pipeBidirectional(clientConn, remoteConn net.Conn, stats *model.NodeStats) 
 			if err != nil {
 				break
 			}
-		}
-		if tc, ok := clientConn.(*net.TCPConn); ok {
-			tc.CloseWrite()
 		}
 	}()
 
