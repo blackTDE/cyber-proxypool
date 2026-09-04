@@ -39,6 +39,20 @@ func NewManager(host string, basePort int, tunnel *TunnelPool) *Manager {
 	}
 }
 
+// SetBasePort updates the starting port for inbound listeners
+func (m *Manager) SetBasePort(basePort int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.basePort = basePort
+}
+
+// GetBasePort returns the current starting port
+func (m *Manager) GetBasePort() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.basePort
+}
+
 // StartNode creates and launches an inbound listener for a specific node
 func (m *Manager) StartNode(node *model.Node) (int, error) {
 	m.mu.Lock()
