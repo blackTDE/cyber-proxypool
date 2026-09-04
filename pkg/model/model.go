@@ -57,6 +57,7 @@ type Node struct {
 	SNI            string        `json:"sni,omitempty"`      // TLS ServerName
 	TLS            bool          `json:"tls"`
 	SkipCertVerify bool          `json:"skip_cert_verify"`
+	Flow           string        `json:"flow,omitempty"`     // Flow control (e.g. "xtls-rprx-vision")
 	AlterID        int           `json:"alter_id,omitempty"` // For VMess
 
 	// Runtime fields
