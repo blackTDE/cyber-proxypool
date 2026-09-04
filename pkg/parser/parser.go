@@ -234,6 +234,17 @@ func convertClashProxyToNode(p map[string]any, subID, subName string, idx int) *
 		node.AlterID = aid
 	}
 
+	// Flow settings (e.g. "xtls-rprx-vision")
+	if flow, ok := p["flow"].(string); ok {
+		node.Flow = strings.TrimSpace(flow)
+	}
+	if node.Flow == "" && node.Protocol == model.ProtoVLESS {
+		nameLower := strings.ToLower(node.Name)
+		if strings.Contains(nameLower, "vision") || strings.Contains(nameLower, "xtls") {
+			node.Flow = "xtls-rprx-vision"
+		}
+	}
+
 	geo := ExtractGeo(node.Name)
 	node.Country = geo.Country
 	node.Flag = geo.Flag
@@ -541,6 +552,14 @@ func parseVLESSURI(u *url.URL, subID, subName string, idx int) *model.Node {
 		sni = host
 	}
 
+	flow := q.Get("flow")
+	if flow == "" {
+		nameLower := strings.ToLower(name)
+		if strings.Contains(nameLower, "vision") || strings.Contains(nameLower, "xtls") {
+			flow = "xtls-rprx-vision"
+		}
+	}
+
 	node := &model.Node{
 		SubID:    subID,
 		SubName:  subName,
@@ -551,6 +570,7 @@ func parseVLESSURI(u *url.URL, subID, subName string, idx int) *model.Node {
 		Password: uuid,
 		TLS:      security == "tls" || security == "reality",
 		SNI:      sni,
+		Flow:     strings.TrimSpace(flow),
 		Network:  q.Get("type"),
 		Path:     q.Get("path"),
 		Host:     q.Get("host"),
