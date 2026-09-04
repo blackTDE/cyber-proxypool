@@ -43,6 +43,7 @@ func NewServer(store *storage.Store, mgr *proxy.Manager, tunnel *proxy.TunnelPoo
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/subscriptions", s.handleSubscriptions)
 	mux.HandleFunc("/api/subscriptions/", s.handleSubscriptionByID)
 	mux.HandleFunc("/api/nodes", s.handleNodes)
@@ -133,13 +134,74 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		TunnelRunning:   s.tunnel.IsRunning(),
 		TunnelPort:      s.tunnel.Config().Port,
 		TunnelStrategy:  string(s.tunnel.Config().Strategy),
-		BaseInboundPort: cfg.BaseInboundPort,
+		BaseInboundPort: s.manager.GetBasePort(),
 		MemoryAllocMB:   float64(m.Alloc) / 1024 / 1024,
 		Goroutines:      runtime.NumGoroutine(),
 		StartedAt:       s.startedAt,
 	}
 
 	writeJSON(w, http.StatusOK, status)
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		return
+	}
+
+	cfg := s.store.GetConfig()
+	cfg.BaseInboundPort = s.manager.GetBasePort()
+
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, cfg)
+		return
+	}
+
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		var req struct {
+			BaseInboundPort int    `json:"base_inbound_port"`
+			TestURL         string `json:"test_url"`
+			TestTimeoutSec  int    `json:"test_timeout_sec"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request json"})
+			return
+		}
+
+		if req.BaseInboundPort > 0 {
+			if req.BaseInboundPort < 1024 || req.BaseInboundPort > 65000 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "base_inbound_port must be between 1024 and 65000"})
+				return
+			}
+			cfg.BaseInboundPort = req.BaseInboundPort
+			s.manager.SetBasePort(req.BaseInboundPort)
+		}
+
+		if req.TestURL != "" {
+			cfg.TestURL = strings.TrimSpace(req.TestURL)
+		}
+		if req.TestTimeoutSec > 0 {
+			cfg.TestTimeoutSec = req.TestTimeoutSec
+		}
+
+		if err := s.store.UpdateConfig(cfg); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save config: %s", err.Error())})
+			return
+		}
+
+		s.BroadcastSSE("config_updated", cfg)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": true,
+			"config":  cfg,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 }
 
 func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
