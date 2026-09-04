@@ -21,6 +21,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/sagernet/sing-vmess"
+	"github.com/sagernet/sing-vmess/vless"
+	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/shadowsocks/go-shadowsocks2/core"
 	"golang.org/x/net/proxy"
@@ -288,55 +290,26 @@ func (d *VLESSDialer) DialContext(ctx context.Context, network, target string) (
 		}
 	}
 
-	targetBytes, err := EncodeTargetAddr(target)
+	flow := d.node.Flow
+	if flow == "" && (strings.Contains(strings.ToLower(d.node.Name), "vision") || strings.Contains(strings.ToLower(d.node.Name), "xtls")) {
+		flow = "xtls-rprx-vision"
+	}
+
+	client, err := vless.NewClient(d.node.Password, flow, logger.NOP())
+	if err != nil {
+		rawConn.Close()
+		return nil, fmt.Errorf("vless client init failed: %w", err)
+	}
+
+	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
 		rawConn.Close()
 		return nil, err
 	}
+	p, _ := strconv.Atoi(portStr)
+	dest := M.ParseSocksaddrHostPort(host, uint16(p))
 
-	// VLESS Header:
-	// [1 byte version (0x00)]
-	// [16 bytes UUID]
-	// [1 byte proto addons len (0x00)]
-	// [1 byte command (0x01: TCP)]
-	// [target address bytes (atyp + addr + port)]
-	// Note: In VLESS spec, port comes before address or as part of socks5 addr.
-	// Specifically:
-	// [2 bytes port big-endian]
-	// [1 byte atyp]
-	// [target address bytes]
-	// Let's decode port and atyp from targetBytes:
-	// SOCKS5 atyp -> VLESS atyp mapping:
-	// SOCKS5: 0x01 = IPv4, 0x03 = Domain, 0x04 = IPv6
-	// VLESS:  0x01 = IPv4, 0x02 = Domain, 0x03 = IPv6
-	vlessAtyp := byte(0x01)
-	switch targetBytes[0] {
-	case 0x01:
-		vlessAtyp = 0x01
-	case 0x03:
-		vlessAtyp = 0x02 // Domain Name
-	case 0x04:
-		vlessAtyp = 0x03 // IPv6
-	}
-
-	portBytes := targetBytes[len(targetBytes)-2:]
-	addrBytes := targetBytes[1 : len(targetBytes)-2]
-
-	req := make([]byte, 0, 1+16+1+1+2+1+len(addrBytes))
-	req = append(req, 0x00) // version
-	req = append(req, d.uuidBytes[:]...)
-	req = append(req, 0x00) // addons len
-	req = append(req, 0x01) // command: TCP
-	req = append(req, portBytes...)
-	req = append(req, vlessAtyp)
-	req = append(req, addrBytes...)
-
-	if _, err := rawConn.Write(req); err != nil {
-		rawConn.Close()
-		return nil, fmt.Errorf("vless header write failed: %w", err)
-	}
-
-	return NewSmartVlessConn(rawConn), nil
+	return client.DialConn(rawConn, dest)
 }
 
 // SmartVlessConn lazily detects and strips the VLESS response header on the first read

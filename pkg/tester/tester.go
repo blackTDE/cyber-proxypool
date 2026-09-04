@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strings"
@@ -171,7 +172,7 @@ func extractIPFromBody(b []byte) string {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "ip=") {
 			ip := strings.TrimPrefix(line, "ip=")
-			if ipRegex.MatchString(ip) {
+			if net.ParseIP(ip) != nil {
 				return ip
 			}
 		}
