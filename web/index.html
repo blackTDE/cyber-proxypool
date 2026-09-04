@@ -92,6 +92,14 @@
           Subscriptions
         </button>
 
+        <button id="btnOpenSettingsModal" class="cyber-btn" title="Configure Base Port & System Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          Settings
+        </button>
+
         <button id="btnTestAll" class="cyber-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
@@ -136,6 +144,10 @@
       <div class="metric-card pink">
         <div class="metric-label">Memory Footprint</div>
         <div class="metric-val" id="metricMem">0 <small>MB</small></div>
+      </div>
+      <div class="metric-card cyan" style="cursor:pointer;" onclick="openSettingsModal()" title="Click to modify Base Port">
+        <div class="metric-label">Base Inbound Port</div>
+        <div class="metric-val" id="metricBasePort">20001 <small id="metricBasePortSmall">range: 20001+</small></div>
       </div>
     </div>
 
@@ -208,10 +220,11 @@
         </label>
 
         <select id="sortSelect" class="cyber-select">
-          <option value="default">Sort: Default</option>
-          <option value="latency">Sort: Lowest Latency</option>
-          <option value="name">Sort: Name</option>
+          <option value="default">Sort: Standard (Grouped by Sub)</option>
+          <option value="name">Sort: Name (A-Z)</option>
+          <option value="protocol">Sort: Protocol</option>
           <option value="port">Sort: Inbound Port</option>
+          <option value="latency">Sort: Lowest Latency</option>
         </select>
 
         <span id="filteredNodeCount" style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">
@@ -285,6 +298,46 @@
         <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1rem;">
           <button type="button" class="cyber-btn" onclick="closeModal('subModal')">Cancel</button>
           <button type="submit" class="cyber-btn cyber-btn-cyan">Import &amp; Extract Nodes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings Modal (Base Port & Configuration) -->
+  <div class="modal-backdrop" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>System Settings // Port Allocation</h3>
+        <button class="cyber-btn cyber-btn-sm" onclick="closeModal('settingsModal')">✕</button>
+      </div>
+
+      <form id="settingsForm">
+        <div class="form-group">
+          <label>Base Inbound Port (-base-port)</label>
+          <input type="number" id="settingBasePort" class="cyber-input" style="width: 100%;" min="1024" max="65000" required>
+          <div style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem; font-family:var(--font-mono);">
+            Starting port for individual proxy listeners (auto-increments: port, port+1, port+2...)
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Latency &amp; Exit-IP Test Target URL</label>
+          <input type="url" id="settingTestURL" class="cyber-input" style="width: 100%;" placeholder="https://cloudflare.com/cdn-cgi/trace">
+        </div>
+
+        <div class="form-group">
+          <label>Test Timeout (Seconds)</label>
+          <input type="number" id="settingTimeoutSec" class="cyber-input" style="width: 100%;" min="2" max="30">
+        </div>
+
+        <div style="background:var(--sub-item-bg); border:1px solid var(--border-subtle); border-radius:8px; padding:0.75rem 1rem; margin-top:1rem; font-size:0.8rem; color:var(--text-muted); display:flex; justify-content:space-between;">
+          <span>Web Dashboard Port: <strong style="color:var(--neon-cyan);">8088</strong></span>
+          <span>Tunnel Pool Port: <strong style="color:var(--neon-emerald);" id="settingsModalTunnelPort">10808</strong></span>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1.25rem;">
+          <button type="button" class="cyber-btn" onclick="closeModal('settingsModal')">Cancel</button>
+          <button type="submit" class="cyber-btn cyber-btn-cyan">Save Settings</button>
         </div>
       </form>
     </div>

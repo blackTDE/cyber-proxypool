@@ -1,6 +1,6 @@
-// CyberProxyPool Web Application
 const state = {
   status: {},
+  config: {},
   subscriptions: [],
   nodes: [],
   tunnel: { enabled: true, port: 10808, strategy: 'round-robin', is_running: false },
@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function fetchInitialData() {
   await Promise.all([
     fetchStatus(),
+    fetchConfig(),
     fetchSubscriptions(),
     fetchNodes(),
     fetchTunnel()
@@ -42,6 +43,12 @@ function initSSE() {
 
   eventSource.addEventListener('connected', () => {
     console.log('[SSE] Connected to event stream');
+  });
+
+  eventSource.addEventListener('config_updated', (e) => {
+    state.config = JSON.parse(e.data);
+    renderConfig();
+    fetchStatus();
   });
 
   eventSource.addEventListener('node_started', (e) => {
@@ -110,11 +117,26 @@ function updateNodeState(nodeId, changes) {
   const node = state.nodes.find(n => n.id === nodeId);
   if (node) {
     Object.assign(node, changes);
-    renderNodes();
+    const row = document.getElementById(`node-row-${nodeId}`);
+    if (row) {
+      row.innerHTML = buildNodeRowHTML(node);
+    } else {
+      renderNodes();
+    }
   }
 }
 
 // --- API Calls ---
+async function fetchConfig() {
+  try {
+    const res = await fetch('/api/config');
+    state.config = await res.json();
+    renderConfig();
+  } catch (err) {
+    console.error('Failed to fetch config', err);
+  }
+}
+
 async function fetchStatus() {
   try {
     const res = await fetch('/api/status');
@@ -361,11 +383,41 @@ function renderStatus() {
   const runningEl = document.getElementById('metricRunningNodes');
   const subsEl = document.getElementById('metricSubs');
   const memEl = document.getElementById('metricMem');
+  const basePortEl = document.getElementById('metricBasePort');
 
   if (totalEl) totalEl.innerHTML = `${s.total_nodes || 0}`;
   if (runningEl) runningEl.innerHTML = `${s.running_nodes || 0} <small>/ ${s.total_nodes || 0} active</small>`;
   if (subsEl) subsEl.innerHTML = `${s.subscriptions || 0}`;
   if (memEl) memEl.innerHTML = `${(s.memory_alloc_mb || 0).toFixed(1)} <small>MB</small>`;
+
+  const bp = s.base_inbound_port || (state.config && state.config.base_inbound_port) || 20001;
+  if (basePortEl) {
+    basePortEl.innerHTML = `${bp} <small id="metricBasePortSmall">range: ${bp}+</small>`;
+  }
+}
+
+function renderConfig() {
+  if (!state.config) return;
+  const bp = state.config.base_inbound_port || 20001;
+  const basePortInput = document.getElementById('settingBasePort');
+  const testUrlInput = document.getElementById('settingTestURL');
+  const timeoutInput = document.getElementById('settingTimeoutSec');
+  const modalTunnelPort = document.getElementById('settingsModalTunnelPort');
+
+  if (basePortInput) basePortInput.value = bp;
+  if (testUrlInput) testUrlInput.value = state.config.test_url || 'https://cloudflare.com/cdn-cgi/trace';
+  if (timeoutInput) timeoutInput.value = state.config.test_timeout_sec || 8;
+  if (modalTunnelPort) modalTunnelPort.textContent = (state.config.tunnel && state.config.tunnel.port) || 10808;
+
+  const basePortEl = document.getElementById('metricBasePort');
+  if (basePortEl) {
+    basePortEl.innerHTML = `${bp} <small id="metricBasePortSmall">range: ${bp}+</small>`;
+  }
+}
+
+function openSettingsModal() {
+  renderConfig();
+  openModal('settingsModal');
 }
 
 function renderTunnel() {
@@ -456,17 +508,36 @@ function renderNodes() {
     return true;
   });
 
-  // Sort
+  // Sort with stable standards (Never dynamic jumping)
   if (state.filter.sortBy === 'latency') {
     list.sort((a, b) => {
       const latA = a.latency > 0 ? a.latency : 999999;
       const latB = b.latency > 0 ? b.latency : 999999;
-      return latA - latB;
+      if (latA !== latB) return latA - latB;
+      return (a.name || '').localeCompare(b.name || '');
     });
   } else if (state.filter.sortBy === 'name') {
-    list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+  } else if (state.filter.sortBy === 'protocol') {
+    list.sort((a, b) => {
+      if (a.protocol !== b.protocol) return a.protocol.localeCompare(b.protocol);
+      return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+    });
   } else if (state.filter.sortBy === 'port') {
-    list.sort((a, b) => (b.inbound_port || 0) - (a.inbound_port || 0));
+    list.sort((a, b) => {
+      const pA = a.inbound_port || 0;
+      const pB = b.inbound_port || 0;
+      if (pA !== pB) return pB - pA;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  } else {
+    // Standard default: Group by subscription, then natural alphanumeric node name
+    list.sort((a, b) => {
+      const subA = a.sub_name || '';
+      const subB = b.sub_name || '';
+      if (subA !== subB) return subA.localeCompare(subB);
+      return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+    });
   }
 
   if (countDisplay) {
@@ -484,76 +555,76 @@ function renderNodes() {
     return;
   }
 
-  tbody.innerHTML = list.map((n, idx) => {
-    // Protocol Badge
-    const protoBadge = `<span class="badge badge-${n.protocol}">${n.protocol.toUpperCase()}</span>`;
+  tbody.innerHTML = list.map(n => `<tr id="node-row-${n.id}">${buildNodeRowHTML(n)}</tr>`).join('');
+}
 
-    // Latency
-    let latencyBadge = `<span class="latency-none">---</span>`;
-    if (n.latency > 0) {
-      let cls = 'latency-fast';
-      if (n.latency > 500) cls = 'latency-slow';
-      else if (n.latency > 200) cls = 'latency-med';
-      latencyBadge = `<span class="${cls}">${n.latency} ms</span>`;
-    } else if (n.latency === -1) {
-      latencyBadge = `<span class="latency-slow" title="${escapeHTML(n.error_message || 'Timeout')}">TIMEOUT</span>`;
-    }
+function buildNodeRowHTML(n) {
+  // Protocol Badge
+  const protoBadge = `<span class="badge badge-${n.protocol}">${n.protocol.toUpperCase()}</span>`;
 
-    // Inbound Port Box
-    let portBox = `<span style="color:var(--text-dark); font-family:var(--font-mono); font-size:0.8rem;">OFFLINE</span>`;
-    if (n.is_running && n.inbound_port > 0) {
-      portBox = `
-        <span class="copy-pill" onclick="copyToClipboard('127.0.0.1:${n.inbound_port}', 'Local Port')">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          ${n.inbound_port}
-        </span>
-      `;
-    }
+  // Latency
+  let latencyBadge = `<span class="latency-none">---</span>`;
+  if (n.latency > 0) {
+    let cls = 'latency-fast';
+    if (n.latency > 500) cls = 'latency-slow';
+    else if (n.latency > 200) cls = 'latency-med';
+    latencyBadge = `<span class="${cls}">${n.latency} ms</span>`;
+  } else if (n.latency === -1) {
+    latencyBadge = `<span class="latency-slow" title="${escapeHTML(n.error_message || 'Timeout')}">TIMEOUT</span>`;
+  }
 
-    // Exit IP
-    const exitIPBadge = n.exit_ip ? `
-      <span style="font-family:var(--font-mono); color:var(--neon-cyan); font-size:0.8rem;">
-        ${n.flag || ''} ${escapeHTML(n.exit_ip)}
+  // Inbound Port Box
+  let portBox = `<span style="color:var(--text-dark); font-family:var(--font-mono); font-size:0.8rem;">OFFLINE</span>`;
+  if (n.is_running && n.inbound_port > 0) {
+    portBox = `
+      <span class="copy-pill" onclick="copyToClipboard('127.0.0.1:${n.inbound_port}', 'Local Port')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        ${n.inbound_port}
       </span>
-    ` : `<span style="color:var(--text-dark); font-size:0.8rem;">Not tested</span>`;
-
-    return `
-      <tr>
-        <td style="width: 45px; text-align: center;">
-          <label class="cyber-switch">
-            <input type="checkbox" ${n.is_running ? 'checked' : ''} onchange="toggleNode('${n.id}', this.checked)">
-            <span class="slider"></span>
-          </label>
-        </td>
-        <td style="min-width: 180px;">
-          <div style="font-weight: 600; display:flex; align-items:center; gap:0.4rem;">
-            <span>${n.flag || '🌐'}</span>
-            <span title="${escapeHTML(n.name)}">${escapeHTML(n.name)}</span>
-          </div>
-          <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">
-            ${escapeHTML(n.sub_name || '')}
-          </div>
-        </td>
-        <td>${protoBadge}</td>
-        <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">
-          ${escapeHTML(n.server)}:${n.port}
-        </td>
-        <td>${portBox}</td>
-        <td>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            ${latencyBadge}
-            <button class="cyber-btn cyber-btn-sm" style="padding: 0.15rem 0.4rem; font-size: 0.7rem;" onclick="testSingleNode('${n.id}')" title="Test Latency">
-              ⚡
-            </button>
-          </div>
-        </td>
-        <td>${exitIPBadge}</td>
-      </tr>
     `;
-  }).join('');
+  }
+
+  // Exit IP
+  const exitIPBadge = n.exit_ip ? `
+    <span style="font-family:var(--font-mono); color:var(--neon-cyan); font-size:0.8rem;">
+      ${n.flag || ''} ${escapeHTML(n.exit_ip)}
+    </span>
+  ` : `<span style="color:var(--text-dark); font-size:0.8rem;">Not tested</span>`;
+
+  return `
+    <td style="width: 45px; text-align: center;">
+      <label class="cyber-switch">
+        <input type="checkbox" ${n.is_running ? 'checked' : ''} onchange="toggleNode('${n.id}', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </td>
+    <td style="min-width: 180px;">
+      <div style="font-weight: 600; display:flex; align-items:center; gap:0.4rem;">
+        <span>${n.flag || '🌐'}</span>
+        <span title="${escapeHTML(n.name)}">${escapeHTML(n.name)}</span>
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">
+        ${escapeHTML(n.sub_name || '')}
+      </div>
+    </td>
+    <td>${protoBadge}</td>
+    <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">
+      ${escapeHTML(n.server)}:${n.port}
+    </td>
+    <td>${portBox}</td>
+    <td>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        ${latencyBadge}
+        <button class="cyber-btn cyber-btn-sm" style="padding: 0.15rem 0.4rem; font-size: 0.7rem;" onclick="testSingleNode('${n.id}')" title="Test Latency">
+          ⚡
+        </button>
+      </div>
+    </td>
+    <td>${exitIPBadge}</td>
+  `;
 }
 
 // --- Event Listeners & Modals ---
@@ -562,6 +633,45 @@ function setupEventListeners() {
   document.getElementById('btnListenAll')?.addEventListener('click', handleListenAll);
   document.getElementById('btnStopAll')?.addEventListener('click', handleStopAll);
   document.getElementById('btnTestAll')?.addEventListener('click', handleTestAll);
+
+  // Settings Modal
+  document.getElementById('btnOpenSettingsModal')?.addEventListener('click', openSettingsModal);
+
+  const settingsForm = document.getElementById('settingsForm');
+  if (settingsForm) {
+    settingsForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const basePort = parseInt(document.getElementById('settingBasePort')?.value, 10);
+      const testUrl = document.getElementById('settingTestURL')?.value;
+      const timeoutSec = parseInt(document.getElementById('settingTimeoutSec')?.value, 10);
+
+      if (isNaN(basePort) || basePort < 1024 || basePort > 65000) {
+        showToast('Base port must be between 1024 and 65000', 'danger');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            base_inbound_port: basePort,
+            test_url: testUrl,
+            test_timeout_sec: timeoutSec
+          })
+        });
+        const result = await res.json();
+        if (result.error) throw new Error(result.error);
+        state.config = result.config;
+        renderConfig();
+        fetchStatus();
+        closeModal('settingsModal');
+        showToast(`Base inbound port updated to ${basePort}`, 'emerald');
+      } catch (err) {
+        showToast(err.message, 'danger');
+      }
+    });
+  }
 
   // Search and filters
   document.getElementById('searchInput')?.addEventListener('input', (e) => {

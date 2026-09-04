@@ -121,7 +121,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	subs := s.store.ListSubscriptions()
 	nodes := s.store.ListNodes()
-	cfg := s.store.GetConfig()
 
 	uptime := time.Since(s.startedAt).Round(time.Second).String()
 
