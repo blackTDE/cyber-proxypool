@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -129,6 +130,14 @@ func (s *Store) ListSubscriptions() []*model.Subscription {
 		cp := *sub
 		list = append(list, &cp)
 	}
+
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Name != list[j].Name {
+			return list[i].Name < list[j].Name
+		}
+		return list[i].ID < list[j].ID
+	})
+
 	return list
 }
 
@@ -216,6 +225,24 @@ func (s *Store) ListNodes() []*model.Node {
 		cp := *node
 		list = append(list, &cp)
 	}
+
+	// Deterministic standard sort:
+	// 1. Subscription Name / ID
+	// 2. Node Name
+	// 3. Node ID
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].SubName != list[j].SubName {
+			return list[i].SubName < list[j].SubName
+		}
+		if list[i].SubID != list[j].SubID {
+			return list[i].SubID < list[j].SubID
+		}
+		if list[i].Name != list[j].Name {
+			return list[i].Name < list[j].Name
+		}
+		return list[i].ID < list[j].ID
+	})
+
 	return list
 }
 
