@@ -145,6 +145,22 @@ func (m *Manager) StartAll(nodes []*model.Node) (int, error) {
 	return successCount, nil
 }
 
+// StartBatch launches inbound listeners for a specific subset of nodes
+func (m *Manager) StartBatch(nodes []*model.Node) (int, error) {
+	return m.StartAll(nodes)
+}
+
+// StopBatch stops inbound listeners for a slice of node IDs
+func (m *Manager) StopBatch(nodeIDs []string) int {
+	stopped := 0
+	for _, id := range nodeIDs {
+		if err := m.StopNode(id); err == nil {
+			stopped++
+		}
+	}
+	return stopped
+}
+
 // StopAll stops all currently running node inbound listeners
 func (m *Manager) StopAll() error {
 	m.mu.Lock()
