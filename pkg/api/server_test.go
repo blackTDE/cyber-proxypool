@@ -109,4 +109,23 @@ proxies:
 	if tunRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", tunRec.Code)
 	}
+
+	// 5. Test POST /api/nodes/batch-start
+	batchBody, _ := json.Marshal(map[string]any{
+		"ids": []string{nodes[0].ID, nodes[1].ID},
+	})
+	batchStartReq := httptest.NewRequest("POST", "/api/nodes/batch-start", bytes.NewReader(batchBody))
+	batchStartRec := httptest.NewRecorder()
+	mux.ServeHTTP(batchStartRec, batchStartReq)
+	if batchStartRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on batch-start, got %d (body: %s)", batchStartRec.Code, batchStartRec.Body.String())
+	}
+
+	// 6. Test POST /api/nodes/batch-stop
+	batchStopReq := httptest.NewRequest("POST", "/api/nodes/batch-stop", bytes.NewReader(batchBody))
+	batchStopRec := httptest.NewRecorder()
+	mux.ServeHTTP(batchStopRec, batchStopReq)
+	if batchStopRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on batch-stop, got %d (body: %s)", batchStopRec.Code, batchStopRec.Body.String())
+	}
 }

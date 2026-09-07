@@ -9,8 +9,10 @@ const state = {
     protocol: 'all',
     subId: 'all',
     runningOnly: false,
+    availableOnly: false,
     sortBy: 'default'
   },
+  selectedNodes: new Set(),
   isTestingAll: false
 };
 
@@ -119,7 +121,7 @@ function updateNodeState(nodeId, changes) {
     Object.assign(node, changes);
     const row = document.getElementById(`node-row-${nodeId}`);
     if (row) {
-      row.innerHTML = buildNodeRowHTML(node);
+      row.innerHTML = buildNodeRowHTML(node, state.selectedNodes.has(node.id));
     } else {
       renderNodes();
     }
@@ -497,6 +499,7 @@ function renderNodes() {
     if (state.filter.subId !== 'all' && n.sub_id !== state.filter.subId) return false;
     if (state.filter.protocol !== 'all' && n.protocol !== state.filter.protocol) return false;
     if (state.filter.runningOnly && !n.is_running) return false;
+    if (state.filter.availableOnly && n.latency <= 0) return false;
     if (state.filter.search) {
       const q = state.filter.search.toLowerCase();
       const matchName = (n.name || '').toLowerCase().includes(q);
@@ -540,25 +543,34 @@ function renderNodes() {
     });
   }
 
+  const availableCount = state.nodes.filter(n => n.latency > 0).length;
   if (countDisplay) {
-    countDisplay.textContent = `Showing ${list.length} of ${state.nodes.length} nodes`;
+    countDisplay.textContent = `Showing ${list.length} of ${state.nodes.length} nodes (${availableCount} available)`;
   }
 
   if (list.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+        <td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
           No nodes match your search criteria. Paste a subscription URL above to load nodes!
         </td>
       </tr>
     `;
+    syncSelectAllCheckbox();
+    renderBatchActionBar();
     return;
   }
 
-  tbody.innerHTML = list.map(n => `<tr id="node-row-${n.id}">${buildNodeRowHTML(n)}</tr>`).join('');
+  tbody.innerHTML = list.map(n => {
+    const isSelected = state.selectedNodes.has(n.id);
+    return `<tr id="node-row-${n.id}" class="${isSelected ? 'selected' : ''}">${buildNodeRowHTML(n, isSelected)}</tr>`;
+  }).join('');
+
+  syncSelectAllCheckbox();
+  renderBatchActionBar();
 }
 
-function buildNodeRowHTML(n) {
+function buildNodeRowHTML(n, isSelected = false) {
   // Protocol Badge
   const protoBadge = `<span class="badge badge-${n.protocol}">${n.protocol.toUpperCase()}</span>`;
 
@@ -595,6 +607,9 @@ function buildNodeRowHTML(n) {
   ` : `<span style="color:var(--text-dark); font-size:0.8rem;">Not tested</span>`;
 
   return `
+    <td style="width: 36px; text-align: center;">
+      <input type="checkbox" class="cyber-table-checkbox node-select-cb" data-id="${n.id}" ${isSelected ? 'checked' : ''} onchange="toggleSelectNode('${n.id}', this.checked)">
+    </td>
     <td style="width: 45px; text-align: center;">
       <label class="cyber-switch">
         <input type="checkbox" ${n.is_running ? 'checked' : ''} onchange="toggleNode('${n.id}', this.checked)">
@@ -625,6 +640,165 @@ function buildNodeRowHTML(n) {
     </td>
     <td>${exitIPBadge}</td>
   `;
+}
+
+// --- Node Multi-Select & Batch Actions ---
+function toggleSelectNode(id, checked) {
+  if (checked) {
+    state.selectedNodes.add(id);
+  } else {
+    state.selectedNodes.delete(id);
+  }
+  const row = document.getElementById(`node-row-${id}`);
+  if (row) {
+    if (checked) row.classList.add('selected');
+    else row.classList.remove('selected');
+  }
+  syncSelectAllCheckbox();
+  renderBatchActionBar();
+}
+
+function syncSelectAllCheckbox() {
+  const selectAllCb = document.getElementById('selectAllNodes');
+  if (!selectAllCb) return;
+  const visibleCbs = document.querySelectorAll('.node-select-cb');
+  if (visibleCbs.length === 0) {
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = false;
+    return;
+  }
+  let checkedCount = 0;
+  visibleCbs.forEach(cb => {
+    if (cb.checked) checkedCount++;
+  });
+  if (checkedCount === 0) {
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = false;
+  } else if (checkedCount === visibleCbs.length) {
+    selectAllCb.checked = true;
+    selectAllCb.indeterminate = false;
+  } else {
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = true;
+  }
+}
+
+function handleSelectAll(checked) {
+  const visibleCbs = document.querySelectorAll('.node-select-cb');
+  visibleCbs.forEach(cb => {
+    cb.checked = checked;
+    const id = cb.dataset.id;
+    if (checked) {
+      state.selectedNodes.add(id);
+    } else {
+      state.selectedNodes.delete(id);
+    }
+    const row = document.getElementById(`node-row-${id}`);
+    if (row) {
+      if (checked) row.classList.add('selected');
+      else row.classList.remove('selected');
+    }
+  });
+  renderBatchActionBar();
+}
+
+function renderBatchActionBar() {
+  const bar = document.getElementById('batchActionBar');
+  const badge = document.getElementById('batchCountBadge');
+  const startCount = document.getElementById('batchStartCount');
+  if (!bar) return;
+
+  const count = state.selectedNodes.size;
+  if (count > 0) {
+    bar.style.display = 'flex';
+    if (badge) badge.textContent = count;
+    if (startCount) startCount.textContent = count;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function handleBatchDeselect() {
+  state.selectedNodes.clear();
+  const selectAllCb = document.getElementById('selectAllNodes');
+  if (selectAllCb) {
+    selectAllCb.checked = false;
+    selectAllCb.indeterminate = false;
+  }
+  document.querySelectorAll('.node-select-cb').forEach(cb => {
+    cb.checked = false;
+  });
+  document.querySelectorAll('#nodeTableBody tr.selected').forEach(tr => {
+    tr.classList.remove('selected');
+  });
+  renderBatchActionBar();
+}
+
+async function handleBatchStart() {
+  const ids = Array.from(state.selectedNodes);
+  if (ids.length === 0) {
+    showToast('No nodes selected to start', 'danger');
+    return;
+  }
+  showToast(`Starting listeners for ${ids.length} selected node(s)...`, 'cyan');
+  try {
+    const res = await fetch('/api/nodes/batch-start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`Successfully opened listen on ${data.started} node(s)!`, 'emerald');
+    await fetchNodes();
+    await fetchStatus();
+  } catch (err) {
+    showToast(`Batch start error: ${err.message}`, 'danger');
+  }
+}
+
+async function handleBatchStop() {
+  const ids = Array.from(state.selectedNodes);
+  if (ids.length === 0) {
+    showToast('No nodes selected to stop', 'danger');
+    return;
+  }
+  showToast(`Stopping listeners for ${ids.length} selected node(s)...`, 'cyan');
+  try {
+    const res = await fetch('/api/nodes/batch-stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`Stopped ${data.stopped} node listener(s)`, 'cyan');
+    await fetchNodes();
+    await fetchStatus();
+  } catch (err) {
+    showToast(`Batch stop error: ${err.message}`, 'danger');
+  }
+}
+
+async function handleBatchTest() {
+  const ids = Array.from(state.selectedNodes);
+  if (ids.length === 0) {
+    showToast('No nodes selected to test', 'danger');
+    return;
+  }
+  showToast(`Testing latency for ${ids.length} selected node(s)...`, 'cyan');
+  try {
+    const res = await fetch('/api/nodes/batch-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`Testing ${ids.length} node(s) concurrently...`, 'emerald');
+  } catch (err) {
+    showToast(`Batch test error: ${err.message}`, 'danger');
+  }
 }
 
 // --- Event Listeners & Modals ---
@@ -693,6 +867,11 @@ function setupEventListeners() {
     });
   });
 
+  document.getElementById('filterAvailableOnly')?.addEventListener('change', (e) => {
+    state.filter.availableOnly = e.target.checked;
+    renderNodes();
+  });
+
   document.getElementById('filterRunningOnly')?.addEventListener('change', (e) => {
     state.filter.runningOnly = e.target.checked;
     renderNodes();
@@ -702,6 +881,15 @@ function setupEventListeners() {
     state.filter.sortBy = e.target.value;
     renderNodes();
   });
+
+  // Multi-select & Batch controls
+  document.getElementById('selectAllNodes')?.addEventListener('change', (e) => {
+    handleSelectAll(e.target.checked);
+  });
+  document.getElementById('btnBatchStart')?.addEventListener('click', handleBatchStart);
+  document.getElementById('btnBatchStop')?.addEventListener('click', handleBatchStop);
+  document.getElementById('btnBatchTest')?.addEventListener('click', handleBatchTest);
+  document.getElementById('btnBatchDeselect')?.addEventListener('click', handleBatchDeselect);
 
   // Tunnel controls
   document.getElementById('tunnelToggle')?.addEventListener('change', (e) => {
@@ -829,3 +1017,12 @@ function initTheme() {
     }
   });
 }
+
+// Global exports for inline HTML events
+window.toggleSelectNode = toggleSelectNode;
+window.handleSelectAll = handleSelectAll;
+window.handleBatchStart = handleBatchStart;
+window.handleBatchStop = handleBatchStop;
+window.handleBatchTest = handleBatchTest;
+window.handleBatchDeselect = handleBatchDeselect;
+

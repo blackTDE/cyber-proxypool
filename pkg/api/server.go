@@ -502,10 +502,10 @@ func (s *Server) handleNodeAction(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusBadRequest, "invalid request json")
 				return
 			}
-			var nodesToTest []model.Node
+			var nodesToTest []*model.Node
 			for _, id := range req.IDs {
 				if node, ok := s.store.GetNode(id); ok {
-					nodesToTest = append(nodesToTest, *node)
+					nodesToTest = append(nodesToTest, node)
 				}
 			}
 			go func() {
@@ -518,6 +518,8 @@ func (s *Server) handleNodeAction(w http.ResponseWriter, r *http.Request) {
 			}()
 			writeJSON(w, http.StatusOK, map[string]any{"testing": len(nodesToTest)})
 			return
+		}
+	}
 
 	// Single node actions: /api/nodes/:id/start, /api/nodes/:id/stop, /api/nodes/:id/test
 	if len(parts) == 2 {
