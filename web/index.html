@@ -214,7 +214,12 @@
       </div>
 
       <div class="toolbar-right">
-        <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; cursor:pointer; color:var(--text-muted);">
+        <label class="cyber-checkbox-label" title="Filter nodes that are successfully tested and available (Latency > 0)">
+          <input type="checkbox" id="filterAvailableOnly">
+          <span style="color:var(--neon-emerald); font-weight:600;">⚡ Available only</span>
+        </label>
+
+        <label class="cyber-checkbox-label">
           <input type="checkbox" id="filterRunningOnly">
           Running only
         </label>
@@ -233,11 +238,45 @@
       </div>
     </div>
 
+    <!-- Multi-Select Batch Action Bar -->
+    <div class="batch-action-bar" id="batchActionBar" style="display: none;">
+      <div class="batch-action-info">
+        <span class="batch-count-badge" id="batchCountBadge">0</span>
+        <span>nodes selected</span>
+      </div>
+      <div class="batch-action-buttons">
+        <button id="btnBatchStart" class="cyber-btn cyber-btn-emerald cyber-btn-sm" title="Start inbound listeners for all selected nodes">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Open Listen (<span id="batchStartCount">0</span>)
+        </button>
+        <button id="btnBatchStop" class="cyber-btn cyber-btn-danger cyber-btn-sm" title="Stop inbound listeners for all selected nodes">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="6" width="12" height="12"></rect>
+          </svg>
+          Close Listen
+        </button>
+        <button id="btnBatchTest" class="cyber-btn cyber-btn-cyan cyber-btn-sm" title="Test latency and exit IPs for selected nodes">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+          </svg>
+          Test Speed
+        </button>
+        <button id="btnBatchDeselect" class="cyber-btn cyber-btn-sm" title="Clear node selection">
+          Deselect All
+        </button>
+      </div>
+    </div>
+
     <!-- Node Table Matrix -->
     <div class="node-table-wrapper">
       <table class="node-table">
         <thead>
           <tr>
+            <th style="width: 36px; text-align:center;">
+              <input type="checkbox" id="selectAllNodes" title="Select / Deselect all visible nodes" class="cyber-table-checkbox">
+            </th>
             <th style="width: 45px; text-align:center;">Listen</th>
             <th>Node / Region</th>
             <th>Protocol</th>
@@ -249,7 +288,7 @@
         </thead>
         <tbody id="nodeTableBody">
           <tr>
-            <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
+            <td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--text-muted);">
               Loading nodes...
             </td>
           </tr>
