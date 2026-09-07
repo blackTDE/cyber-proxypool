@@ -535,6 +535,74 @@ body, .cyber-header, .metric-card, .tunnel-banner, .toolbar-panel, .node-table-w
   border-color: var(--neon-cyan);
 }
 
+.cyber-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.cyber-table-checkbox, .node-select-cb {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--neon-cyan);
+  vertical-align: middle;
+}
+
+/* Floating Batch Action Bar */
+.batch-action-bar {
+  position: sticky;
+  top: 75px;
+  z-index: 60;
+  margin-bottom: 1.25rem;
+  background: var(--bg-card);
+  border: 1px solid var(--neon-cyan);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 20px var(--neon-cyan-glow);
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  animation: batch-slide-down 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes batch-slide-down {
+  from { transform: translateY(-12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.batch-action-info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.batch-count-badge {
+  background: var(--neon-cyan);
+  color: #06090f;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 12px;
+}
+
+.batch-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 /* Node Table / Cards */
 .node-table-wrapper {
   background: var(--bg-glass);
@@ -571,6 +639,10 @@ body, .cyber-header, .metric-card, .tunnel-banner, .toolbar-panel, .node-table-w
 
 .node-table tr:hover td {
   background: var(--tr-hover);
+}
+
+.node-table tr.selected td {
+  background: rgba(0, 240, 255, 0.07);
 }
 
 /* Badges */
