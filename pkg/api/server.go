@@ -425,8 +425,6 @@ func (s *Server) handleNodeAction(w http.ResponseWriter, r *http.Request) {
 			}
 			s.BroadcastSSE("nodes_updated", map[string]any{"action": "stop-all"})
 			writeJSON(w, http.StatusOK, map[string]string{"status": "all stopped"})
-			return
-
 		case "test-all":
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -443,8 +441,83 @@ func (s *Server) handleNodeAction(w http.ResponseWriter, r *http.Request) {
 			}()
 			writeJSON(w, http.StatusOK, map[string]string{"status": "testing initiated"})
 			return
-		}
-	}
+
+		case "batch-start":
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IDs []string `json:"ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request json")
+				return
+			}
+			var nodesToStart []*model.Node
+			for _, id := range req.IDs {
+				if node, ok := s.store.GetNode(id); ok {
+					nodesToStart = append(nodesToStart, node)
+				}
+			}
+			count, err := s.manager.StartBatch(nodesToStart)
+			for _, n := range nodesToStart {
+				s.store.UpdateNodeRuntime(n.ID, n.IsRunning, n.InboundPort, n.Latency, n.ExitIP, n.ErrorMessage)
+			}
+			s.BroadcastSSE("nodes_updated", map[string]any{"action": "batch-start", "count": count})
+			writeJSON(w, http.StatusOK, map[string]any{"started": count, "total": len(req.IDs), "error": fmt.Sprint(err)})
+			return
+
+		case "batch-stop":
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IDs []string `json:"ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request json")
+				return
+			}
+			stopped := s.manager.StopBatch(req.IDs)
+			for _, id := range req.IDs {
+				if node, ok := s.store.GetNode(id); ok {
+					s.store.UpdateNodeRuntime(node.ID, false, 0, node.Latency, node.ExitIP, "")
+				}
+			}
+			s.BroadcastSSE("nodes_updated", map[string]any{"action": "batch-stop", "count": stopped})
+			writeJSON(w, http.StatusOK, map[string]any{"stopped": stopped, "total": len(req.IDs)})
+			return
+
+		case "batch-test":
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				IDs []string `json:"ids"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid request json")
+				return
+			}
+			var nodesToTest []model.Node
+			for _, id := range req.IDs {
+				if node, ok := s.store.GetNode(id); ok {
+					nodesToTest = append(nodesToTest, *node)
+				}
+			}
+			go func() {
+				cfg := s.store.GetConfig()
+				s.tester.TestAll(context.Background(), nodesToTest, cfg.TestURL, 15, func(res tester.TestResult) {
+					s.store.UpdateNodeRuntime(res.NodeID, s.manager.IsNodeRunning(res.NodeID), s.manager.GetNodePort(res.NodeID), res.Latency, res.ExitIP, res.Error)
+					s.BroadcastSSE("node_tested", res)
+				})
+				s.BroadcastSSE("test_complete", map[string]string{"status": "batch_complete"})
+			}()
+			writeJSON(w, http.StatusOK, map[string]any{"testing": len(nodesToTest)})
+			return
 
 	// Single node actions: /api/nodes/:id/start, /api/nodes/:id/stop, /api/nodes/:id/test
 	if len(parts) == 2 {
