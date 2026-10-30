@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"cyberproxypool/pkg/model"
@@ -37,7 +38,7 @@ func setupTestServer(t *testing.T) (*Server, *http.ServeMux, string) {
 }
 
 func TestAPIRoutes(t *testing.T) {
-	_, mux, tempDir := setupTestServer(t)
+	srv, mux, tempDir := setupTestServer(t)
 	defer os.RemoveAll(tempDir)
 
 	// 1. Test GET /api/status
@@ -127,5 +128,90 @@ proxies:
 	mux.ServeHTTP(batchStopRec, batchStopReq)
 	if batchStopRec.Code != http.StatusOK {
 		t.Fatalf("expected 200 on batch-stop, got %d (body: %s)", batchStopRec.Code, batchStopRec.Body.String())
+	}
+
+	// 7. Set latency on nodes and test GET /api/proxy/fastest
+	store := srv.store
+	store.UpdateNodeRuntime(nodes[0].ID, false, 0, 150, "1.1.1.1", "")
+	store.UpdateNodeRuntime(nodes[1].ID, false, 0, 85, "2.2.2.2", "")
+
+	// Test GET /api/proxy/fastest (JSON, auto_start=true)
+	fastestReq := httptest.NewRequest("GET", "/api/proxy/fastest", nil)
+	fastestRec := httptest.NewRecorder()
+	mux.ServeHTTP(fastestRec, fastestReq)
+	if fastestRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/fastest, got %d", fastestRec.Code)
+	}
+	var fastItem ProxyItemResponse
+	if err := json.NewDecoder(fastestRec.Body).Decode(&fastItem); err != nil {
+		t.Fatalf("failed to decode fastest proxy response: %v", err)
+	}
+	if fastItem.ID != nodes[1].ID {
+		t.Errorf("expected fastest node ID %s, got %s", nodes[1].ID, fastItem.ID)
+	}
+	if !fastItem.IsRunning || fastItem.InboundPort <= 0 {
+		t.Errorf("expected fastest node to be auto-started, got running=%v port=%d", fastItem.IsRunning, fastItem.InboundPort)
+	}
+
+	// Test GET /api/proxy/fastest?format=text
+	fastestTextReq := httptest.NewRequest("GET", "/api/proxy/fastest?format=text", nil)
+	fastestTextRec := httptest.NewRecorder()
+	mux.ServeHTTP(fastestTextRec, fastestTextReq)
+	if fastestTextRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/fastest?format=text, got %d", fastestTextRec.Code)
+	}
+	textBody := strings.TrimSpace(fastestTextRec.Body.String())
+	if !strings.HasPrefix(textBody, "http://") {
+		t.Errorf("expected http:// prefix in text mode, got %s", textBody)
+	}
+
+	// 8. Test GET /api/proxy/get (alias)
+	getAliasReq := httptest.NewRequest("GET", "/api/proxy/get?format=socks5", nil)
+	getAliasRec := httptest.NewRecorder()
+	mux.ServeHTTP(getAliasRec, getAliasReq)
+	if getAliasRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/get, got %d", getAliasRec.Code)
+	}
+	socks5Body := strings.TrimSpace(getAliasRec.Body.String())
+	if !strings.HasPrefix(socks5Body, "socks5://") {
+		t.Errorf("expected socks5:// prefix, got %s", socks5Body)
+	}
+
+	// 9. Test GET /api/proxy/random
+	randomReq := httptest.NewRequest("GET", "/api/proxy/random", nil)
+	randomRec := httptest.NewRecorder()
+	mux.ServeHTTP(randomRec, randomReq)
+	if randomRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/random, got %d", randomRec.Code)
+	}
+
+	// 10. Test GET /api/proxy/list
+	listReq := httptest.NewRequest("GET", "/api/proxy/list?running_only=false", nil)
+	listRec := httptest.NewRecorder()
+	mux.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/list, got %d", listRec.Code)
+	}
+	var proxyList []ProxyItemResponse
+	if err := json.NewDecoder(listRec.Body).Decode(&proxyList); err != nil {
+		t.Fatalf("failed to decode proxy list: %v", err)
+	}
+	if len(proxyList) != 2 {
+		t.Errorf("expected 2 proxies in list, got %d", len(proxyList))
+	}
+
+	// 11. Test GET /api/proxy/tunnel
+	proxyTunReq := httptest.NewRequest("GET", "/api/proxy/tunnel", nil)
+	proxyTunRec := httptest.NewRecorder()
+	mux.ServeHTTP(proxyTunRec, proxyTunReq)
+	if proxyTunRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on /api/proxy/tunnel, got %d", proxyTunRec.Code)
+	}
+	var tunResp TunnelProxyResponse
+	if err := json.NewDecoder(proxyTunRec.Body).Decode(&tunResp); err != nil {
+		t.Fatalf("failed to decode tunnel response: %v", err)
+	}
+	if tunResp.Port != 10808 {
+		t.Errorf("expected tunnel port 10808, got %d", tunResp.Port)
 	}
 }

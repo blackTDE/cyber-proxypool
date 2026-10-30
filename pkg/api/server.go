@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -50,6 +52,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/nodes/", s.handleNodeAction)
 	mux.HandleFunc("/api/tunnel", s.handleTunnel)
 	mux.HandleFunc("/api/events", s.handleSSE)
+
+	// Third-party proxy extraction APIs
+	mux.HandleFunc("/api/proxy/fastest", s.handleProxyFastest)
+	mux.HandleFunc("/api/proxy/get", s.handleProxyFastest) // alias for scraper compatibility
+	mux.HandleFunc("/api/proxy/random", s.handleProxyRandom)
+	mux.HandleFunc("/api/proxy/list", s.handleProxyList)
+	mux.HandleFunc("/api/proxy/tunnel", s.handleProxyTunnel)
 }
 
 // BroadcastSSE sends event to all connected dashboard clients
@@ -632,6 +641,326 @@ func (s *Server) handleTunnel(w http.ResponseWriter, r *http.Request) {
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+type ProxyItemResponse struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Country     string `json:"country,omitempty"`
+	Protocol    string `json:"protocol"`
+	Latency     int64  `json:"latency"`
+	ExitIP      string `json:"exit_ip,omitempty"`
+	InboundPort int    `json:"inbound_port"`
+	IsRunning   bool   `json:"is_running"`
+	HTTPProxy   string `json:"http_proxy"`
+	Socks5Proxy string `json:"socks5_proxy"`
+	Address     string `json:"address"`
+}
+
+type TunnelProxyResponse struct {
+	Enabled          bool   `json:"enabled"`
+	IsRunning        bool   `json:"is_running"`
+	Port             int    `json:"port"`
+	Strategy         string `json:"strategy"`
+	ActiveNodesCount int    `json:"active_nodes_count"`
+	HTTPProxy        string `json:"http_proxy"`
+	Socks5Proxy      string `json:"socks5_proxy"`
+	Address          string `json:"address"`
+	Description      string `json:"description"`
+}
+
+func (s *Server) getProxyHost(r *http.Request) string {
+	mgrHost := s.manager.Host()
+	if mgrHost != "" && mgrHost != "0.0.0.0" {
+		return mgrHost
+	}
+	if r != nil && r.Host != "" {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err == nil && host != "" && host != "0.0.0.0" {
+			return host
+		}
+		if err != nil && !strings.Contains(r.Host, ":") && r.Host != "0.0.0.0" {
+			return r.Host
+		}
+	}
+	return "127.0.0.1"
+}
+
+func (s *Server) makeProxyItemResponse(node *model.Node, host string) ProxyItemResponse {
+	port := node.InboundPort
+	addr := fmt.Sprintf("%s:%d", host, port)
+	return ProxyItemResponse{
+		ID:          node.ID,
+		Name:        node.Name,
+		Country:     node.Country,
+		Protocol:    string(node.Protocol),
+		Latency:     node.Latency,
+		ExitIP:      node.ExitIP,
+		InboundPort: port,
+		IsRunning:   node.IsRunning,
+		HTTPProxy:   fmt.Sprintf("http://%s", addr),
+		Socks5Proxy: fmt.Sprintf("socks5://%s", addr),
+		Address:     addr,
+	}
+}
+
+func (s *Server) renderProxyResponse(w http.ResponseWriter, item ProxyItemResponse, format string) {
+	switch format {
+	case "text", "url", "http":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, item.HTTPProxy)
+	case "socks5":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, item.Socks5Proxy)
+	case "raw", "address", "ip:port":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, item.Address)
+	default:
+		writeJSON(w, http.StatusOK, item)
+	}
+}
+
+func (s *Server) filterEligibleNodes(r *http.Request) ([]*model.Node, string, bool, bool) {
+	protoFilter := strings.ToLower(r.URL.Query().Get("protocol"))
+	countryFilter := strings.ToLower(r.URL.Query().Get("country"))
+	runningOnly := r.URL.Query().Get("running_only") == "true"
+	autoStart := r.URL.Query().Get("auto_start") != "false"
+	format := strings.ToLower(r.URL.Query().Get("format"))
+
+	nodes := s.store.ListNodes()
+	var candidates []*model.Node
+
+	for _, n := range nodes {
+		// Sync latest runtime
+		n.IsRunning = s.manager.IsNodeRunning(n.ID)
+		n.InboundPort = s.manager.GetNodePort(n.ID)
+
+		if protoFilter != "" && strings.ToLower(string(n.Protocol)) != protoFilter {
+			continue
+		}
+		if countryFilter != "" && !strings.Contains(strings.ToLower(n.Country), countryFilter) {
+			continue
+		}
+		if runningOnly && !n.IsRunning {
+			continue
+		}
+		candidates = append(candidates, n)
+	}
+
+	return candidates, format, autoStart, runningOnly
+}
+
+func (s *Server) handleProxyFastest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	candidates, format, autoStart, _ := s.filterEligibleNodes(r)
+	if len(candidates) == 0 {
+		if format == "text" || format == "url" || format == "http" || format == "socks5" || format == "raw" {
+			http.Error(w, "no proxy nodes available", http.StatusNotFound)
+		} else {
+			writeError(w, http.StatusNotFound, "no proxy nodes available in pool")
+		}
+		return
+	}
+
+	// 1. Pick candidate with lowest positive latency (fastest)
+	var best *model.Node
+	var minLat int64 = 999999999
+	for _, n := range candidates {
+		if n.Latency > 0 && n.Latency < minLat {
+			minLat = n.Latency
+			best = n
+		}
+	}
+
+	// Fallback to first candidate if no node tested yet or all failed
+	if best == nil {
+		best = candidates[0]
+	}
+
+	// 2. Auto-start listener if offline and autoStart is true
+	if autoStart && !s.manager.IsNodeRunning(best.ID) {
+		port, err := s.manager.StartNode(best)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to auto-start fastest proxy: %v", err))
+			return
+		}
+		s.store.UpdateNodeRuntime(best.ID, true, port, best.Latency, best.ExitIP, "")
+		s.BroadcastSSE("node_started", map[string]any{"id": best.ID, "port": port})
+		best.IsRunning = true
+		best.InboundPort = port
+	} else {
+		best.IsRunning = s.manager.IsNodeRunning(best.ID)
+		best.InboundPort = s.manager.GetNodePort(best.ID)
+	}
+
+	host := s.getProxyHost(r)
+	resp := s.makeProxyItemResponse(best, host)
+	s.renderProxyResponse(w, resp, format)
+}
+
+func (s *Server) handleProxyRandom(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	candidates, format, autoStart, _ := s.filterEligibleNodes(r)
+	if len(candidates) == 0 {
+		if format == "text" || format == "url" || format == "http" || format == "socks5" || format == "raw" {
+			http.Error(w, "no proxy nodes available", http.StatusNotFound)
+		} else {
+			writeError(w, http.StatusNotFound, "no proxy nodes available in pool")
+		}
+		return
+	}
+
+	// Prefer nodes with positive latency
+	var available []*model.Node
+	for _, n := range candidates {
+		if n.Latency > 0 {
+			available = append(available, n)
+		}
+	}
+
+	pool := available
+	if len(pool) == 0 {
+		pool = candidates
+	}
+
+	picked := pool[rand.Intn(len(pool))]
+
+	if autoStart && !s.manager.IsNodeRunning(picked.ID) {
+		port, err := s.manager.StartNode(picked)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to auto-start proxy: %v", err))
+			return
+		}
+		s.store.UpdateNodeRuntime(picked.ID, true, port, picked.Latency, picked.ExitIP, "")
+		s.BroadcastSSE("node_started", map[string]any{"id": picked.ID, "port": port})
+		picked.IsRunning = true
+		picked.InboundPort = port
+	} else {
+		picked.IsRunning = s.manager.IsNodeRunning(picked.ID)
+		picked.InboundPort = s.manager.GetNodePort(picked.ID)
+	}
+
+	host := s.getProxyHost(r)
+	resp := s.makeProxyItemResponse(picked, host)
+	s.renderProxyResponse(w, resp, format)
+}
+
+func (s *Server) handleProxyList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// By default for third parties, list only running nodes unless running_only=false
+	runningOnly := r.URL.Query().Get("running_only") != "false"
+	protoFilter := strings.ToLower(r.URL.Query().Get("protocol"))
+	countryFilter := strings.ToLower(r.URL.Query().Get("country"))
+	format := strings.ToLower(r.URL.Query().Get("format"))
+
+	nodes := s.store.ListNodes()
+	host := s.getProxyHost(r)
+	var items []ProxyItemResponse
+
+	for _, n := range nodes {
+		n.IsRunning = s.manager.IsNodeRunning(n.ID)
+		n.InboundPort = s.manager.GetNodePort(n.ID)
+
+		if runningOnly && !n.IsRunning {
+			continue
+		}
+		if protoFilter != "" && strings.ToLower(string(n.Protocol)) != protoFilter {
+			continue
+		}
+		if countryFilter != "" && !strings.Contains(strings.ToLower(n.Country), countryFilter) {
+			continue
+		}
+
+		items = append(items, s.makeProxyItemResponse(n, host))
+	}
+
+	switch format {
+	case "text", "url", "http":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		for _, item := range items {
+			fmt.Fprintln(w, item.HTTPProxy)
+		}
+	case "socks5":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		for _, item := range items {
+			fmt.Fprintln(w, item.Socks5Proxy)
+		}
+	case "raw", "address", "ip:port":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		for _, item := range items {
+			fmt.Fprintln(w, item.Address)
+		}
+	default:
+		writeJSON(w, http.StatusOK, items)
+	}
+}
+
+func (s *Server) handleProxyTunnel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cfg := s.tunnel.Config()
+	host := s.getProxyHost(r)
+	addr := fmt.Sprintf("%s:%d", host, cfg.Port)
+	format := strings.ToLower(r.URL.Query().Get("format"))
+
+	resp := TunnelProxyResponse{
+		Enabled:          cfg.Enabled,
+		IsRunning:        s.tunnel.IsRunning(),
+		Port:             cfg.Port,
+		Strategy:         string(cfg.Strategy),
+		ActiveNodesCount: s.tunnel.ActiveNodeCount(),
+		HTTPProxy:        fmt.Sprintf("http://%s", addr),
+		Socks5Proxy:      fmt.Sprintf("socks5://%s", addr),
+		Address:          addr,
+		Description:      "Unified Rotating Tunnel Pool - dual HTTP & SOCKS5 listener with automatic load balancing",
+	}
+
+	switch format {
+	case "text", "url", "http":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, resp.HTTPProxy)
+	case "socks5":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, resp.Socks5Proxy)
+	case "raw", "address", "ip:port":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, resp.Address)
+	default:
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 
