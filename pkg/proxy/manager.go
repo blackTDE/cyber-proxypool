@@ -53,6 +53,13 @@ func (m *Manager) GetBasePort() int {
 	return m.basePort
 }
 
+// Host returns the bind host for listeners
+func (m *Manager) Host() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.host
+}
+
 // StartNode creates and launches an inbound listener for a specific node
 func (m *Manager) StartNode(node *model.Node) (int, error) {
 	m.mu.Lock()

@@ -141,6 +141,20 @@ func (t *TunnelPool) Config() model.TunnelConfig {
 	return t.config
 }
 
+// ActiveNodeCount returns the number of active nodes currently in the pool
+func (t *TunnelPool) ActiveNodeCount() int {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return len(t.activeNodes)
+}
+
+// Host returns the bind host for tunnel listener
+func (t *TunnelPool) Host() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.host
+}
+
 // UpdateConfig updates port and strategy, restarting if port changed
 func (t *TunnelPool) UpdateConfig(cfg model.TunnelConfig) error {
 	t.mu.Lock()
