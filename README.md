@@ -132,12 +132,61 @@ resp = requests.get("https://cloudflare.com/cdn-cgi/trace", proxies=proxies)
 print(resp.text)
 ```
 
+### ⚡ 1-Click Third-Party Proxy Extraction API
+Third-party scrapers, spiders (Scrapy/Selenium/Puppeteer), and scripts can dynamically pull working proxies with a single HTTP request:
+
+```bash
+# 1. Get the fastest proxy node (auto-starts listener if offline!)
+curl http://127.0.0.1:8088/api/proxy/fastest?format=text
+# Output: http://127.0.0.1:20001
+
+# In Python Scrapers:
+import requests
+fastest = requests.get("http://127.0.0.1:8088/api/proxy/fastest?format=text").text.strip()
+resp = requests.get("https://httpbin.org/ip", proxies={"http": fastest, "https": fastest})
+
+# 2. Get random available proxy
+curl http://127.0.0.1:8088/api/proxy/random?format=text
+
+# 3. Get all active listening proxies as a list
+curl http://127.0.0.1:8088/api/proxy/list?format=text
+
+# 4. Get full proxy metadata in JSON format (default)
+curl http://127.0.0.1:8088/api/proxy/fastest
+# Output:
+# {
+#   "id": "ec301ca780d2b93c",
+#   "name": "HK 01 - Trojan",
+#   "country": "HK",
+#   "protocol": "trojan",
+#   "latency": 85,
+#   "exit_ip": "104.28.1.1",
+#   "inbound_port": 20001,
+#   "is_running": true,
+#   "http_proxy": "http://127.0.0.1:20001",
+#   "socks5_proxy": "socks5://127.0.0.1:20001",
+#   "address": "127.0.0.1:20001"
+# }
+```
+
+Query Parameters for `/api/proxy/*`:
+- `format`: `json` (default), `text` (or `url`, `http`), `socks5`, `raw` (`127.0.0.1:20001`)
+- `auto_start`: `true` (default: auto-starts offline node listeners on next port), `false`
+- `running_only`: `true`, `false`
+- `protocol`: filter by protocol (e.g. `trojan`, `vmess`, `ss`, `vless`, `socks5`)
+- `country`: filter by country / region
+
 ---
 
 ## 📡 REST API Reference
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
+| `GET` | `/api/proxy/fastest` | **Get the fastest proxy** (supports `format=text/json/socks5/raw`, `auto_start=true`) |
+| `GET` | `/api/proxy/get` | Alias for `/api/proxy/fastest` (scraper compatibility) |
+| `GET` | `/api/proxy/random` | Get a random available proxy node |
+| `GET` | `/api/proxy/list` | List all active proxy inbounds |
+| `GET` | `/api/proxy/tunnel` | Get unified rotating tunnel proxy info |
 | `GET` | `/api/status` | System health, memory, uptime, base port, and active node counts |
 | `GET` | `/api/config` | Retrieve system configuration (base port, test URL, timeout) |
 | `POST` | `/api/config` | Update system configuration (e.g. change `base_inbound_port` dynamically) |
@@ -148,6 +197,16 @@ print(resp.text)
 | `GET` | `/api/nodes` | List nodes (sorted deterministically; supports query filters) |
 | `POST` | `/api/nodes/start-all` | Start all proxy inbounds |
 | `POST` | `/api/nodes/stop-all` | Stop all proxy inbounds |
+| `POST` | `/api/nodes/test-all` | Concurrently test latency and exit IPs for all nodes |
+| `POST` | `/api/nodes/batch-start` | Batch start selected proxy inbounds (`{"ids": [...]}`) |
+| `POST` | `/api/nodes/batch-stop` | Batch stop selected proxy inbounds (`{"ids": [...]}`) |
+| `POST` | `/api/nodes/batch-test` | Batch test selected proxy inbounds (`{"ids": [...]}`) |
+| `POST` | `/api/nodes/:id/start` | Start individual node listener |
+| `POST` | `/api/nodes/:id/stop` | Stop individual node listener |
+| `POST` | `/api/nodes/:id/test` | Test single node latency and exit IP |
+| `GET` | `/api/tunnel` | Get rotating tunnel configuration and status |
+| `POST` | `/api/tunnel` | Update tunnel port, strategy, or state |
+| `GET` | `/api/events` | Server-Sent Events (SSE) stream for real-time updates |
 | `POST` | `/api/nodes/test-all` | Concurrently test latency and exit IPs for all nodes |
 | `POST` | `/api/nodes/:id/start` | Start individual node listener |
 | `POST` | `/api/nodes/:id/stop` | Stop individual node listener |
