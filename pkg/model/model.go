@@ -15,6 +15,8 @@ const (
 	ProtoVLESS       ProxyProtocol = "vless"
 	ProtoSocks5      ProxyProtocol = "socks5"
 	ProtoHTTP        ProxyProtocol = "http"
+	ProtoHysteria2   ProxyProtocol = "hysteria2"
+	ProtoAnyTLS      ProxyProtocol = "anytls"
 )
 
 // RoutingStrategy defines load balancing algorithms for tunnel pool

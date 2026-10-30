@@ -665,6 +665,8 @@ body, .cyber-header, .metric-card, .tunnel-banner, .toolbar-panel, .node-table-w
 .badge-vless { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
 .badge-socks5 { background: rgba(251, 146, 60, 0.15); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.3); }
 .badge-http { background: rgba(234, 179, 8, 0.15); color: #eab308; border: 1px solid rgba(234, 179, 8, 0.3); }
+.badge-hysteria2, .badge-hy2 { background: rgba(236, 72, 153, 0.15); color: #ec4899; border: 1px solid rgba(236, 72, 153, 0.3); }
+.badge-anytls { background: rgba(14, 165, 233, 0.15); color: #0ea5e9; border: 1px solid rgba(14, 165, 233, 0.3); }
 
 .badge-online { background: rgba(0, 255, 157, 0.15); color: var(--neon-emerald); border: 1px solid var(--neon-emerald); }
 .badge-offline { background: rgba(255, 255, 255, 0.05); color: var(--text-dark); border: 1px solid var(--border-subtle); }

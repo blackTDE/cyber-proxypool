@@ -36,8 +36,8 @@ func FetchSubscription(subURL string, timeout time.Duration) (string, error) {
 		return "", fmt.Errorf("invalid subscription url: %w", err)
 	}
 
-	// Use Clash/v2ray User-Agent to ensure servers return node lists
-	req.Header.Set("User-Agent", "clash-verge/v1.7.7 (Clash.Meta)")
+	// Use Clash.Meta / Mihomo User-Agent to ensure modern airports return real node lists
+	req.Header.Set("User-Agent", "Clash.Meta; mihomo/1.18.10")
 	req.Header.Set("Accept", "*/*")
 
 	resp, err := client.Do(req)
@@ -165,8 +165,22 @@ func convertClashProxyToNode(p map[string]any, subID, subName string, idx int) *
 		protocol = model.ProtoSocks5
 	case "http":
 		protocol = model.ProtoHTTP
+	case "hysteria2", "hy2":
+		protocol = model.ProtoHysteria2
+	case "anytls":
+		protocol = model.ProtoAnyTLS
 	default:
 		// Unsupported protocol in Clash
+		return nil
+	}
+
+	// Filter out airport notice / warning dummy nodes
+	nameLower := strings.ToLower(name)
+	if strings.Contains(nameLower, "版本太老") ||
+		strings.Contains(nameLower, "不再支持") ||
+		strings.Contains(nameLower, "无法正常使用") ||
+		strings.Contains(nameLower, "下载新版客户端") ||
+		strings.Contains(nameLower, "fake_node_password") {
 		return nil
 	}
 
@@ -274,6 +288,14 @@ func parseURILines(content, subID, subName string) []model.Node {
 }
 
 func parseSingleURI(rawURI, subID, subName string, idx int) *model.Node {
+	if strings.Contains(rawURI, "fake_node_password") ||
+		strings.Contains(rawURI, "版本太老") ||
+		strings.Contains(rawURI, "不再支持") ||
+		strings.Contains(rawURI, "无法正常使用") ||
+		strings.Contains(rawURI, "下载新版客户端") {
+		return nil
+	}
+
 	u, err := url.Parse(rawURI)
 	if err != nil {
 		return nil
